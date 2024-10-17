@@ -57,6 +57,21 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+// Get counts from ADC value
+uint16_t get_counts_from_adc_val(uint16_t adcval)
+{
+	// Proportion (0-1) of the ADC
+	const double prop = (double)adcval / 1023.0;
+
+	// The maximum count is 65535, corresponding to 100% duty
+	// 5% duty (servo min) = 0.05 * 65535 = 3276.75 ~= 3277 counts
+	// 10% duty (servo max) = 0.10 * 65535 = 9830.25 ~= 9830 counts
+	// Difference between the counts = 9830 - 3277 = 6553 counts
+
+	const double res = 3277.0 + prop * 6553.0;
+
+	return (uint16_t)res;
+}
 
 /* USER CODE END 0 */
 
@@ -92,12 +107,18 @@ int main(void)
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
-
   /* USER CODE BEGIN 2 */
   // Transmission data buffer
   uint8_t tx_buff = {0, 0, 1};
   // Reception data buffer
   uint8_t rx_buff[3];
+  // 10-bit integer provided by ADC
+  uint16_t adc_val;
+  // Number of counts to pass to the timer
+  uint16_t res_counts;
+
+  // Start the PWM
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -106,21 +127,24 @@ int main(void)
   {
     /* USER CODE END WHILE */
 
-
-
-
     /* USER CODE BEGIN 3 */
 	  // 1. Pull CS line low
 	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
 
-	  // 2. Read value from ADC
+	  // 2. Read bytes from ADC
 	  HAL_SPI_TransmitReceive(&hspi1, tx_buff, rx_buff, 3, 1000);
 
 	  // 3. Pull CS line high
 	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
 
-	  // 2. Apply PWM to servo motor
-	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, rx_buff[2]);
+	  // 4. Get ADC's 10-bit value
+	  adc_val = (rx_buff[1] << 8) | rx_buff[2];
+
+	  // 5. Convert ADC value to timer compare value
+	  res_counts = get_counts_from_adc_val(adcval);
+
+	  // 6. Apply PWM to servo motor
+	  __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, res_counts);
 	HAL_Delay(10);
   }
   /* USER CODE END 3 */
