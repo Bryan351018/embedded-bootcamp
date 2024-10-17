@@ -63,12 +63,18 @@ uint16_t get_counts_from_adc_val(uint16_t adcval)
 	// Proportion (0-1) of the ADC
 	const double prop = (double)adcval / 1023.0;
 
-	// The maximum count is 65535, corresponding to 100% duty
-	// 5% duty (servo min) = 0.05 * 65535 = 3276.75 ~= 3277 counts
-	// 10% duty (servo max) = 0.10 * 65535 = 9830.25 ~= 9830 counts
-	// Difference between the counts = 9830 - 3277 = 6553 counts
+	// The maximum count is 10000, corresponding to 100% duty
+	#define MAX_COUNT 10000
+	// Counts at 5% duty (servo min)
+	#define MIN_DUTY_C 0.05 * MAX_COUNT
+	// Counts at 10% duty (servo max)
+	#define MAX_DUTY_C 0.10 * MAX_COUNT
+	// Difference between the counts at max and min duties
+	#define RANGE_DUTY_C MAX_DUTY_C - MIN_DUTY_C
 
-	const double res = 3277.0 + prop * 6553.0;
+
+
+	const double res = MIN_DUTY_C + prop * RANGE_DUTY_C;
 
 	return (uint16_t)res;
 }
@@ -109,7 +115,11 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   // Transmission data buffer
-  uint8_t tx_buff = {0, 0, 1};
+  // First byte contains start bit (0b1)
+  // Second byte contains configure bits (2nd bit from the left is a "don't-care")
+  // -> 0b1000 = Measuring voltage passively at CH0 (instead of differentially across 2 channels)
+  // (the last byte is a "don't-care")
+  uint8_t tx_buff = {0b1, 0b1000, 0};
   // Reception data buffer
   uint8_t rx_buff[3];
   // 10-bit integer provided by ADC
@@ -138,7 +148,7 @@ int main(void)
 	  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
 
 	  // 4. Get ADC's 10-bit value
-	  adc_val = (rx_buff[1] << 8) | rx_buff[2];
+	  adc_val = ((rx_buff[1] & 0b11) << 8) | rx_buff[2];
 
 	  // 5. Convert ADC value to timer compare value
 	  res_counts = get_counts_from_adc_val(adcval);
